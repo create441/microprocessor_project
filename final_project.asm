@@ -1,4 +1,6 @@
-
+charactor MACRO params
+    
+ENDM
 
 .model small
 
