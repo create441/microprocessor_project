@@ -1,719 +1,614 @@
-assume cs:code , ds:data , ss:stack
-data segment
-	;db 256 dup(0)  ; 代码一点一点写，每个调用都测试一下，现在要写真正程序用到的，就注释掉这里
-	BOUNDARY_COLOR dw 4431h   ; 直接定址法，颜色=0100100b,字符31h=数字1
-	NEXT_ROL dw 0A0h   ; a0=160
-	SNAKE_HEAD dw 0
-	SNAKE_BODY dw 6
-	SNAKE_STERN dw 12
-	SNAKE dw 200 dup (0,0,0)  ; 三个数是来记录前一个节点，中间点的位置，记录下一个点在内存中的相对偏移
-	;00 00 00 00 00 00 
-	SNAKE_COLOR dw 2201h   ; 颜色00100010b,字符01h='☺'
-
-	UP db 48h
-	DOWN db 50h
-	LEFT db 4Bh
-	RIGHT db 4Dh
+; Yehonatan Mizrachi
+; 8086 masm DOSBox
+; Micro processors and assembly language - bar ilan university
+.model small
+.stack 200h
+.data
+	; init
+	backgroud_color equ 60h 
+	player_score_color equ 2Bh
+	screen_width equ 80d
+	screen_hight equ 25d
+	; player
+	player_score_label_offset equ (screen_hight*screen_width-1d)*2d
+	player_score db ?
+	player_win_score equ 0FFh
+	; snake
+	; len X 2
+	snake_len dw ?
+	snake_body dw player_win_score + 3h dup(?)
+	; for repairing the backgroud(the snake will never start at 25d*80d*2d)
+	snake_previous_last_cell dw ?
+	; snake movement
+	; 4D/4B/48/50 - r/l/u/d. defulte - right
+	RIGHT equ 4Dh
+	LEFT equ 4Bh
+	UP equ 48h
+	DOWN equ 50h
+	snake_direction db ?
 	
-	SCREEN_COLOR dw 0700h
-
-	NEXT_ROW dw 160
-
-	DIRECTION dw 3		; 设置自动移动
-	DIRECTION_FUN dw offset isMoveUp     - offset greedy_snake + 7e00h ; [0]
-		      dw offset isMoveDown   - offset greedy_snake + 7e00h ; [2]
-		      dw offset isMoveLeft   - offset greedy_snake + 7e00h ; [4]
-		      dw offset isMoveRight  - offset greedy_snake + 7e00h ; [6]
+	; food
+	food_location dw ?
+	food_color equ 4Dh
+	food_icon equ 01h
+	food_bounders equ 2d*screen_width*2d
+	; start and exit
+	EXIT db 0h
+	START_AGAIN db 0h
+	; 39h = bios code for the space key
+	START_AGAIN_KEY equ 39h
+	END_GAME_KEY equ 01h
+	; messeges
+	msg_game_over db 'GAME OVER!:( YOU ANYWAY SHOULD GET BACK TO WORK ON EX5Q3;) PRESS Esc TO EXIT      ' ,0Ah , 0Dh , '$'
+	msg_game_over2 db '                          PRESS SPACE TO START AGAIN',0Ah , 0Dh , '$'
+	msg_game_win db 'YOU HAVE WON THE GAME BADASS!!:)  PRESS ANY KEY TO EXIT' ,0Ah , 0Dh , '$'
+	msg_start_game db 'WELCOME TO SNAKEV2! PRESS THE Esc KEY TO EXIT THE GAME. enjoy:)',0Ah , 0Dh , '$'
+	
+	
+	;Ex2q3 write register content
+	;initializing ascii array with every possible combenation of ?? 0-F
+	ascii db 16 dup ('0') 
+	db 16 dup ('1') 
+	db 16 dup ('2') 
+	db 16 dup ('3') 
+	db 16 dup ('4') 
+	db 16 dup ('5') 
+	db 16 dup ('6') 
+	db 16 dup ('7')
+	db 16 dup ('8')
+	db 16 dup ('9') 
+	db 16 dup ('A')
+	db 16 dup ('B')
+	db 16 dup ('C') 
+	db 16 dup ('D')
+	db 16 dup ('E') 
+	db 16 dup ('F')
+	db 16 dup ('0','1','2','3','4','5','6','7','8','9','A','B','C','D','E','F')
+.code
+MAIN:
+	; data segment initializion
+	mov ax, @data
+	mov ds, ax	
+	
+	call INIT_GAME
+	
+	; infinit loop with escape key(esc) and game over or win game options
+	MAIN_LOOP:	
+		;next frame
+		call MOVE_SNAKE
 		
-	FOOD_LOCATION dw 160*3 + 20*2	; 先人为的设定一个位置
-	FOOD_COLOR dw 4439h	; 39h=字符'9' , 44h=01000100b 红色
-	NEW_NODE dw 18		; 后面吃到食物那要用到，18就是我们初始化小蛇后蛇尾的下一个位置
-
-	GAME_OVER db 'Game Over!' 
-	GAME_DIR db 'direction: '
-	SCORE_STR db 'Score='
-	SCORE_CHAR db '0123456789ABCDEF'
-	SCORE dw 0h
-	SCORE_POSITION dw 160*24+60*2
-
-
-data ends
-
-stack segment
-	db 128 dup(0)
-stack ends
-
-code segment
-start:	
-	mov ax , stack
-	mov ss , ax
-	mov sp , 128
-
-	call cpy_greedy_snake
-	call sav_old_int9
-	call set_new_int9
+		call PRINT_SNAKE	
+		
+		call CHECK_SNAKE_AET_FOOD
+		call CHECK_SNAKE_IN_BORDERS
+		call CHECK_SNAKE_NOOSE
+		
+		call GET_DIRECTION_BY_KEY
+		
+		call MAIN_LOOP_FRAME_RATE
+		; if exit is on, end the game and return to OS
+		cmp [EXIT],1h
+		
+		
+		jnz MAIN_LOOP
+	; start again
+	cmp [START_AGAIN],1h
+	jz MAIN
 	
-	
-	mov bx , 0
-	push bx
-	mov bx , 7e00h
-	push bx
-	retf	   ; pop ip , pop cs  ; CS:IP=0:7e00
-
-	mov ax , 4c00h
+	call INIT_SCREEN_BACK_TO_OS
+	; return to OS
+	mov ah,4ch
 	int 21h
-
-greedy_snake:
-	call init_reg
-	call clear_screen
-	call init_screen
-	call init_food
-	call init_snake	           ; 画出蛇的图形
-
 	
+INIT_GAME proc near
+	mov byte ptr [player_score],0h
+	mov byte ptr [snake_direction],RIGHT
+	mov word ptr [snake_previous_last_cell],screen_width*screen_hight*2d
+	mov word ptr [food_location],8d*screen_width*2d + 10d*2d
+	mov byte ptr [EXIT],0h
+	mov byte ptr [START_AGAIN],0h
+	
+	call INIT_SCREEN
+	call INIT_SNAKE_BODY
 
-nextMove:
-	call delay    
-	cli
-	call isMoveDirection
-	sti
-	jmp nextMove
-
-
-
-testA:	; 无限循环,测试
-	mov ax , 1000h
-	jmp testA
-
-	mov ax , 4c00h
-	int 21h
-
-
-
-;-----------------------------------------
-init_food:
-	mov di , FOOD_LOCATION
-	push FOOD_COLOR
-	pop es:[di]
 	ret
+INIT_GAME endp	
 
+; if it is, it's GAME OVER. the snake is noose if the head has the same location as one of its body cells
+CHECK_SNAKE_NOOSE proc near
+	push si
+	push ax
+	
+	mov ax,snake_body[0h]
+	mov si,2h
+	CHECK_SNAKE_NOOSE_LOOP:
+		; if ax == snake body[si] its game over
+		cmp ax,snake_body[si]
+		jz CHECK_SNAKE_NOOSE_GAME_OVER
+		; next iteration
+		add si,2h
+		cmp si,snake_len
+		jnz CHECK_SNAKE_NOOSE_LOOP
 
-;-----------------------------------------
-isMoveDirection:
-	mov bx , DIRECTION
-	add bx , bx
-	call word ptr ds:DIRECTION_FUN[bx]
+	jmp END_CHECK_SNAKE_NOOSE
+
+CHECK_SNAKE_NOOSE_GAME_OVER:
+	call GAME_OVER
+	
+END_CHECK_SNAKE_NOOSE:
+	pop ax
+	pop si
 	ret
+CHECK_SNAKE_NOOSE endp
+; for now, N and S(E and W is fine)
+CHECK_SNAKE_IN_BORDERS proc near
+	push ax
+	mov ax,snake_body[0h]
+	;S
+	cmp ax,screen_width*screen_hight*2h
+	jb CHECK_SNAKE_IN_BORDERS_VALID
 
+	call GAME_OVER
+	
+CHECK_SNAKE_IN_BORDERS_VALID:	
+	pop ax
+	ret
+CHECK_SNAKE_IN_BORDERS endp
 
+CHECK_SNAKE_AET_FOOD proc near
+	push ax
+	push si
+	mov ax, snake_body[0h]
+	cmp ax,food_location
+	jnz END_CHECK_SNAKE_AET_FOOD
+	; gemerate new food location
+	call GENERATE_RANDOM_FOOD_LOCATION
+	; print it to the screen
+	mov si,[food_location]
+	mov al,food_icon
+	mov ah,food_color
+	mov es:[si],ax
+	; make the snake bigger
+	mov ax,[snake_previous_last_cell]
+	mov si,[snake_len]
+	mov snake_body[si],ax
+	add [snake_len],2d
+	; add score
+	inc byte ptr [player_score]
+	call PRINT_PLAYER_SCORE
+	
+	cmp byte ptr [player_score],player_win_score
+	jnz END_CHECK_SNAKE_AET_FOOD
+	call WIN_GAME
+		
+END_CHECK_SNAKE_AET_FOOD:
+	pop si
+	pop ax
+	ret
+CHECK_SNAKE_AET_FOOD endp
 
-;-----------------------------------------
-delay:
+GENERATE_RANDOM_FOOD_LOCATION proc near
 	push ax
 	push dx
-
-	mov dx , 3h
-	sub ax , ax
-delaying:
-	sub ax , 1
-	sbb dx , 0
-	cmp ax , 0
-	jne delaying
-	cmp dx , 0
-	jne delaying
-
-
-
+	push si
+	push bx
+GENERATE_RANDOM_FOOD_LOCATIPN_AGAIN:
+	; update its location
+	; cx:dx number of clock ticks since midnight
+	mov ah,0h
+	INT 1Ah
+	mov ax,dx
+	mov dx,cx
+	add dx,[snake_len]
+	add dx,[snake_len]
+	; div 16-bit dx:ax/operant -> dx = mod, ax = result
+	mov cx, screen_width*screen_hight*2h - food_bounders
+	div cx
+	;get rid of the last bit
+	and dx,0FFFEh
+	add dx, food_bounders/2d
+	;check if the food is on the snake
+	mov si,0d
+	GENERATE_RANDOM_FOOD_LOCATION_AGAIN_LOOP:
+		mov ax,snake_body[si]
+		;if the new location is on the snake, start over the whole function
+		cmp dx,ax
+		jz GENERATE_RANDOM_FOOD_LOCATIPN_AGAIN
+		add si,2d
+		cmp si,[snake_len]
+		jnz GENERATE_RANDOM_FOOD_LOCATION_AGAIN_LOOP
+		
+	;update food location
+	mov [food_location], dx
+	
+	pop bx
+	pop si
 	pop dx
 	pop ax
-
 	ret
-
-
-; 双向链表数据结构
-;-----------------------------------------
-init_snake:
-	mov bx , offset SNAKE
-	add bx , SNAKE_HEAD
-	mov si , 160*10+40*2   ; 屏幕上的位置(0690h)
-	mov dx , SNAKE_COLOR   ; 2201h
-
-	mov word ptr ds:[bx+0] , 0   ; ds:[bx+0] = 0
-	mov ds:[bx+2] , si  
-	mov es:[si] , dx             ; 设置蛇的颜色
-	mov word ptr ds:[bx+4] , 6
-
-	sub si , 2
-	add bx , 6
-
-	mov word ptr ds:[bx+0] , 0   ; ds:[bx+0] = 0
-	mov ds:[bx+2] , si
-	mov es:[si] , dx             ; 设置蛇的颜色
-	mov word ptr ds:[bx+4] , 12
-
-	sub si , 2
-	add bx , 6
-
-	mov word ptr ds:[bx+0] , 6   ; ds:[bx+0] = 0
-	mov ds:[bx+2] , si
-	mov es:[si] , dx             ; 设置蛇的颜色
-	mov word ptr ds:[bx+4] , 18
-
-
-	ret
-
-
-;-----------------------------------------
-init_screen:
-	mov dx , BOUNDARY_COLOR    ; 设置游戏界面边框的颜色
-	call show_up_down_line     ; 画出游戏上下边界的边框
-	call show_left_right_line  ; 画出游戏左右边界的边框
-	call show_score		   ; 初始化界面下面输出字符串score=
-	call output_score	   ; 输出成绩，初始为 0 
-	call show_direction        ; 显示dierction
+GENERATE_RANDOM_FOOD_LOCATION endp
+MAIN_LOOP_FRAME_RATE proc near
+	push ax
+	push cx
+	push dx
+	push bx
+	;make the game faster
+	mov bx,0h
+	mov bl,[player_score]
+	mov cl,4d
+	shr bx,cl
+	;delay cx:dx micro sec (10^-6)
+	mov al,0
+	mov ah,86h
+	mov cx,0000h		
+	mov dx,0FFFFh
+	sub dx,bx
+	int 15h
 	
+	pop bx
+	pop dx
+	pop cx
+	pop dx
 	ret
+MAIN_LOOP_FRAME_RATE endp
 
 
-;-----------------------------------------
-show_direction:
-	mov si , offset GAME_DIR
-	mov di , 160*24+0*2
-	mov cx , 11
-showDirection:
-	mov al , ds:[si]
-	mov es:[di] , al
-	mov byte ptr es:[di+1] , 00000010b
-	inc si
-	add di , 2
-	loop showDirection
-	ret
-
-
-;-----------------------------------------
-show_score:
-	mov si , offset SCORE_STR
-	mov di , 160*24+50*2
-	
-	mov cx , 6
-showScore:
-	mov al , ds:[si]
-	mov es:[di] , al
-	mov byte ptr es:[di+1] , 00000010b
-	inc si
-	add di , 2
-	loop showScore
-	ret
-
-
-;-----------------------------------------
-show_up_down_line:
-	mov bx , 0
-	mov cx , 80
-showUpDownLine:
-	mov es:[bx] , dx   ; dx=4431h,字符31h=数字1，颜色=01000100b
-	mov es:[bx+160*23] , dx
-	add bx , 2
-	loop showUpDownLine
-	ret
-
-
-;-----------------------------------------
-output_score:
-	mov si , offset SCORE
-	mov ax , ds:[si]
-
-	mov si , SCORE_POSITION	
-	mov dx , ax
-
-	mov al , ah
-	mov ah , 0
-	mov cx , 4
-	shr al , cl	; 得到最高位
-	mov bx , ax
-	mov al , ds:SCORE_CHAR[bx]
-	mov byte ptr es:[si] , al
-	mov byte ptr es:[si+1] , 00001010b
-	add si , 2
-
-	mov ax , dx
-	mov al , ah
-	mov ah , 0
-	mov cx , 4
-	shl al , cl   
-	shr al , cl	; 次高位
-	mov bx , ax
-	mov al , ds:SCORE_CHAR[bx]
-	mov byte ptr es:[si] , al
-	mov byte ptr es:[si+1] , 00001010b
-	add si , 2
-
-	mov ax , dx
-	mov ah , 0
-	mov cx , 4
-	shr al , cl	; 次次高位
-	mov bx , ax
-	mov al , ds:SCORE_CHAR[bx]	
-	mov byte ptr es:[si] , al
-	mov byte ptr es:[si+1] , 00001010b
-	add si , 2
-
-	mov ax , dx
-	mov ah , 0
-	mov cx , 4
-	shl al , cl	
-	shr al , cl	; 最低位
-	mov bx , ax
-	mov al , ds:SCORE_CHAR[bx]
-	mov byte ptr es:[si] , al
-	mov byte ptr es:[si+1] , 00001010b
-	add si , 2
-
-	mov byte ptr es:[si] , 'H'
-	mov byte ptr es:[si+1] , 00001010b
-
-
-	ret
-
-
-;-----------------------------------------
-show_left_right_line:
-	mov bx , 0
-	mov cx , 23
-showLeftRightLine:
-	mov es:[bx] , dx
-	mov es:[bx+79*2] , dx
-	;add bx , 160
-	add bx , NEXT_ROW  ; 优化写法
-	loop showLeftRightLine
-	ret
-
-
-;-----------------------------------------
-init_reg:
-	mov bx , 0b800h
-	mov es , bx
-
-	mov bx , data
-	mov ds , bx
-	ret
-
-
-;-----------------------------------------
-clear_screen:
-	mov bx , 0
-	mov dx , SCREEN_COLOR
-	mov cx , 2000
-
-clearScreen:
-	mov es:[bx] , dx  ; (dx)=0700,es:[0]~es:[1]=00,es:[2]~es:[3]=07,颜色属性是07，RGB=白色
-	add bx , 2
-	loop clearScreen
-	ret
-
-
-;-------------------------------------------
-new_int9:
+WIN_GAME proc near 
+	push dx
 	push ax
 	
-	call clear_buff  ; 清空键盘缓冲区
-
-	in al , 60h   ; 60h号端口读取的是键盘扫描码
-	pushf
-	call dword ptr cs:[200h]
-
-	cmp al , UP  ; 记录方向键扫描码
-	je isUp
-	cmp al , LEFT
-	je isLeft
-	cmp al , RIGHT
-	je isRight
-	cmp al , DOWN
-	je isDown
-
-	cmp al , 3bh  ; 字符 ‘F1’ 的扫描码
-	jne int9Ret
-	call change_screen_color ;写来测试看，我写的9号中断处理键盘缓冲区能不能正常工作
-
-
-int9Ret:
-	pop ax
-	iret
-
-
-;-------------------------------------------
-isUp:
-	mov di , 160*24 + 12*2  ;  每行最下面显示出按下的按键
-	mov byte ptr es:[di] , 'U'
-	mov byte ptr es:[di+1] , 00001010b
-	cmp DIRECTION , 1	; 自动移动加入的时候，按下按键要进行判断，如果水平方向相反，就不用移动了
-; 下面写的移动函数，在移动前会判断将要移动到的位置的字符信息是不是背景(也就是没显示其他的东西)，如果是
-; 就直接返回了，这么写是代码风格更好。效率也高
-	je int9Ret
-
-	call isMoveUp
-	jmp int9Ret
-
-isDown:
-	mov di , 160*24 + 12*2  ;  每行最下面显示出按下的按键
-	mov byte ptr es:[di] , 'D'
-	mov byte ptr es:[di+1] , 00001010b
-	cmp DIRECTION , 0
-	je int9Ret
-
-	call isMoveDown
-	jmp int9Ret
-
-isLeft:
-	mov di , 160*24 + 12*2  ;  每行最下面显示出按下的按键
-	mov byte ptr es:[di] , 'L'
-	mov byte ptr es:[di+1] , 00001010b
-	cmp DIRECTION , 3
-	je int9Ret
-
-	call isMoveLeft
-	jmp int9Ret
-
-isRight:
-	mov di , 160*24 + 12*2       ; 每行最下面显示出按下的按键
-	mov byte ptr es:[di] , 'R'  
-	mov byte ptr es:[di+1] , 00001010b
-	cmp DIRECTION , 2
-	je int9Ret
-
-	call isMoveRight
-	jmp int9Ret
-
-
-;-------------------------------------------
-isMoveUp:
-	mov bx , offset SNAKE
-	add bx , SNAKE_HEAD
-	mov si , ds:[bx+2]      ; bx+2 获得节点中间的值，这个值记录的是该节点的位置
-	sub si , NEXT_ROW	; 向上走了一步，所以中间节点的位置也要偏移160，刚好是一行
-
-	cmp byte ptr es:[si] , 0	; 向上走一步如果es:[si]=1,表示到显示区的边界了，不能移动
-	jne noMoveUp			
-	call draw_new_snake		; 移动，重新绘制蛇
-
-	mov DIRECTION , 0		; 在按下相应按键，蛇能动了之后，就要设置自动移动了
-	ret
-
-noMoveUp:
-	call isFood
-	ret
-
-
-;-------------------------------------------
-isMoveDown:
-	mov bx , offset SNAKE
-	add bx , SNAKE_HEAD
-	mov si , ds:[bx+2]
-	add si , NEXT_ROW
-
-	cmp byte ptr es:[si] , 0
-	jne noMoveDown
-	call draw_new_snake
-
-	mov DIRECTION , 1
-	ret
-noMoveDown:
-	call isFood	;下一步不能走，加入食物后也要判断下是不是食物
-	ret
-
-
-;-------------------------------------------
-isMoveLeft:
-	mov bx , offset SNAKE
-	add bx , SNAKE_HEAD
-	mov si , ds:[bx+2]
-	sub si , 2
-
-	cmp byte ptr es:[si] , 0
-	jne noMoveDown
-	call draw_new_snake
-	mov DIRECTION , 2
-	ret
-noMoveLeft:
-	call isFood
-	ret
-
-
-;-------------------------------------------
-isMoveRight:
-	mov bx , offset SNAKE
-	add bx , SNAKE_HEAD
-	mov si , ds:[bx+2]
-	add si , 2
-
-	cmp byte ptr es:[si] , 0
-	jne noMoveDown
-	call draw_new_snake
-	mov DIRECTION , 3
-	ret
-noMoveRight:
-	call isFood
-	ret
-
-
-;-------------------------------------------
-isFood:
-	cmp byte ptr es:[si] , '9'	; 我们前面设置了食物的字符是9,前景背景都是红色
-	jne noFood
-
-	call eat_food
-	call set_new_food	; 吃掉一个要再生成一个
-	ret
-noFood:
-	call clear_screen
-	call recover_int9Ret
-	call end_game
-	call return_dos
-	
-	ret
-
-
-;-------------------------------------------
-return_dos:
-	mov ax , 4c00h
+	mov dx, offset msg_game_win
+	mov ah, 9h
 	int 21h
-
-
-;-------------------------------------------
-recover_int9Ret:
-	push es
-	mov bx , 0
-	mov es , bx
-	push es:[200h]
-	pop es:[9*4]
-	push es:[202h]
-	pop es:[9*4+2]
-	pop es
-	ret
-;-------------------------------------------
-end_game:
-	mov si , offset GAME_OVER
-	mov di , 160*12+35*2
-	mov cx , 10
-endGame:
-	mov al , ds:[si]
-	mov byte ptr es:[di] , al
-	mov byte ptr es:[di+1] , 00001100b
-	inc si
-	add di , 2
-	loop endGame
-
-	ret
-
-
-;-------------------------------------------
-set_new_food:
-	mov al , 0
-	out 70h , al
-	in al , 71h
-
-	mov dl , al 
-	and dl , 00001111b	; dl中是个位数的数字
-	push cx
-	mov cl , 4
-	mov ch , 0
-	shr al , cl	; al中是十位数的数字
-	pop cx		; 之前这里没有pop,导致出错，调试半天
-	mov bl , 10
-	mul bl		; ax=al*bl
-	add al , dl	; 得到秒数
-
-	mul al		; 如果al是奇数,得到的肯定也是一个奇数;25*80*2=4000种显示位置,最后一行是3840~4000
-; 按描述算，60*60=3600种位置，所以食物不可能随机到最后一行，也不会到达游戏界面的下边界，导致蛇吃不到食物
-	shr al , 1	; 二进制，右移一位去掉产生奇数的1
-	shl al , 1	; 控制误差，再左移一位，这样误差就为1
-	mov bx , ax	; 得到下一个食物出现的位置
-	cmp byte ptr es:[bx] , 0	; 如果得到的位置不是空闲的
-	jne set_new_food	; 这里有一个问题，如果生成的食物位置不行，到这里要跳转，又要进行下次执行，但是又要发生键盘中断
+	; get key delay
+	mov ax, 0h
+	mov ah,0h
+	int 16h	
+	; clear key buffer
+	mov ah,0Ch
+	int 21h	
 	
-	push FOOD_COLOR		
-	pop es:[bx]	
-
+	mov byte ptr [EXIT],1h
+	
+	pop ax
+	pop dx
 	ret
-
-
-;-------------------------------------------
-eat_food:
-	push NEW_NODE		; 记录新节点的位置，吃到食物，新食物变新的头结点
-	pop ds:[bx+0]
-				; 以前头结点的前驱指向食物，新食物的后继指向以前的头结点
-	mov bx , offset SNAKE
-	add bx , NEW_NODE
-
-	mov word ptr ds:[bx+0] , 0	;食物节点变成头结点，蛇变长一截
-	mov ds:[bx+2] , si
-	push SNAKE_COLOR
-	pop es:[si]
-
-	push SNAKE_HEAD
-	pop ds:[bx+4]
-
-	push NEW_NODE
-	pop SNAKE_HEAD		; 设置新的头
-;                               00   02   04       06   08   10       12   14   16       18   20   22  
-;最开始小蛇相关信息在内存中存放(18   si   06   |   00   si   12   |   06   si   18   |   00   si   00) 
-;                               ↑    ↑    ↑        ↑    ↑    ↑        ↑    ↑    ↑        ↑    ↑    ↑
-;				pre  pos  next     pre  pos  next     pre  pos  next     pre  pos  next  
-;这个图是初始小蛇走了一步，然后吃了食物后在内存中的存储状态，第四个节点就变成新的蛇头节点,前面三个节点分别变成蛇的第二个节点，第三个节点和第四个节点
-;头结点变了，以前的头结点也要做相应的修改
-;尾节点没变，还是在内存偏移12的位置
-	add NEW_NODE , 6
-
-	inc SCORE
-	call output_score
-
-	ret
-
-
-;-------------------------------------------
-draw_new_snake:
-	push SNAKE_STERN  ; 蛇尾巴进栈保存，SNAKE_STERN=12
-	pop ds:[bx+0]     ; bx接上面是指向蛇头的,向上走一步，蛇头节点的第一个存储区就要修改，指向前一个节点
-; 我们的做法就是我蛇尾的那个节点放到蛇头前面，这要中间的就可以不用修改，只修改第一个和最后一个
-
-	mov bx , offset SNAKE
-	add bx , SNAKE_STERN	; 找到记录最后一个节点的内存(蛇尾)
-
-	push ds:[bx+0]			; 先保存最后一个节点中的pre,06
-
-	mov word ptr ds:[bx+0] , 0	; 升级成蛇头了，节点中的pre变成0
-	mov di , ds:[bx+2]		; 中间节点保存的是位置信息，现在要改变颜色
-	push SCREEN_COLOR
-	pop es:[di]
-
-	mov ds:[bx+2] , si		; 修改完颜色，现在最后蛇尾节点变蛇头，要重新修改位置
-; si 上面是拿到了最开始蛇头的si-160
-
-	push SNAKE_COLOR
-	pop es:[si]			; 在对应位置画出来
-
-	push SNAKE_HEAD			; SNAKE_HEAD=0
-	pop ds:[bx+4]			; 最后修改节点中最后一个信息，就是下一个节点的位置(这时候应该指向原来的头结点)
-
-	push SNAKE_STERN		; 曾经的头部现在已经变成尾巴了，SNAKE_STERN=12
-	pop SNAKE_HEAD			; SNAKE_HEAD=12
-; 因为这些点是记录在内存的，所以要保存他们的位置，才能够正确访问到
-; 现在SNAKE_HEAD变成12，下次访问+SNAKE_HEAD就找到真正的头结点在内存中的位置，
-; 初始SNAKE_HEAD=0，应该最开始我们在SNAKE中第一个节点存放头，所以只要偏移0就找到真正的头结点了
-
-
-	pop SNAKE_STERN			; 先保存最后一个节点中的pre，现在修改了蛇尾放到头部前面，pre就是新的尾部
-	ret
-
-
-;                               00   02   04       06   08   10       12   14   16  
-;最开始小蛇相关信息在内存中存放(00   si'  06   |   00   si   12   |   06   si   18) ; 这里每个数字都是dw，我写成对应10进制表示的数了
-;                               ↑    ↑    ↑        ↑    ↑    ↑        ↑    ↑    ↑
-;				pre  pos  next     pre  pos  next     pre  pos  next
-;所以SNAKE_HEAD=0,SNAKE_STERN=12 , 所以要找到对应
-
-;第一个头节点前面什么东西也没有，所有pre=0
-
-;head body  STERN	;最开始小蛇
-;▅    ▅     ▅
-
-;向上一步，原来的尾巴变成头，在修改对应信息就好了，比如原来最后尾巴节点颜色改成背景色
-;                               00   02   04       06   08   10       12   14    16  
-;向上一步后相关信息在内存中存放(12   si'  06   |   00   si   12   |   00   si'-1 00)
-;                               ↑    ↑    ↑        ↑    ↑    ↑        ↑    ↑     ↑
-;				pre  pos  next     pre  pos  next     pre  pos   next(偏移00就可以找到第二个节点在内存中的位置，取出相关信息)
-;所以SNAKE_HEAD=12,SNAKE_STERN=06 , 原来的头结点变成第二个节点，尾巴节点变成头，第二个节点变成尾巴
-
-;STERN head body  STERN		;向上一步走
-;▅     ▅    ▅    ▅✘(修改颜色为背景色)  
-
-
-;-------------------------------------------
-clear_buff:
-	mov ah , 1
-	int 16h
-	jz clearBuffRet		; ZF=1,键盘无输入
-	mov ah , 0
-	int 16h
-	jmp clear_buff
-
-clearBuffRet:
-	ret
-
-
-;-------------------------------------------
-change_screen_color:
+WIN_GAME endp
+GAME_OVER proc near 
+	push dx
+	push ax
 	push bx
+	; print game over msg
+	mov dx, offset msg_game_over
+	mov ah, 9h
+	int 21h
+	; add blink to the msg2 line
+	mov bx,0h
+	GAME_OVER_BLINK_LABEL:
+		mov ax,0h
+		mov ah,backgroud_color
+		or ah,10000000b
+		mov es:[bx + 3*screen_width*2d], ax
+		; next iteration
+		add bx,2h
+		cmp bx, screen_width*2d
+		jnz GAME_OVER_BLINK_LABEL
+	; print game over msg2
+	mov dx, offset msg_game_over2
+	mov ah, 9h
+	int 21h
+GAME_OVER_GET_OTHER_KEY:
+	; clear key buffer
+	mov ah,0Ch
+	int 21h	
+	; get key
+	mov ax,0h
+	mov ah,0h
+	int 16h	
+	
+	cmp ah, END_GAME_KEY
+	jz END_GAME_OVER
+	
+	cmp ah, START_AGAIN_KEY
+	jz GAME_OVER_START_AGAIN
+	
+	jmp GAME_OVER_GET_OTHER_KEY
+
+
+GAME_OVER_START_AGAIN:
+	mov [START_AGAIN],1h
+
+END_GAME_OVER:		
+	; clear key buffer
+	mov ah,0Ch
+	int 21h	
+	
+	mov byte ptr [EXIT],1h
+	
+	pop bx
+	pop ax
+	pop dx
+	ret
+GAME_OVER endp
+MOVE_SNAKE proc near
+	push ax
+	push bx
+	; save snake_previous_last_cell(for backgroud repairing)
+	mov bx,snake_len
+	mov ax,snake_body[bx - 2d]
+	mov [snake_previous_last_cell],ax
+	
+	mov ax,snake_body[0h]
+	call SHR_ARRAY
+	; RIGHT
+	cmp byte ptr [snake_direction],RIGHT
+	jz MOVE_RIGHT
+	; LEFT
+	cmp byte ptr [snake_direction],LEFT
+	jz MOVE_LEFT
+	; UP
+	cmp byte ptr [snake_direction],UP
+	jz MOVE_UP
+	; DOWN
+	cmp byte ptr [snake_direction],DOWN
+	jz MOVE_DOWN
+
+	
+	MOVE_RIGHT:
+		add ax,2d
+		jmp MOVE_TO_DIRECTION
+	MOVE_LEFT:
+		sub ax, 2d
+		jmp MOVE_TO_DIRECTION
+	MOVE_UP:
+		sub ax, screen_width*2d
+		jmp MOVE_TO_DIRECTION
+	MOVE_DOWN:
+		add ax, screen_width*2d
+		jmp MOVE_TO_DIRECTION
+		
+MOVE_TO_DIRECTION:
+	;add the new head cell
+	mov snake_body[0h],ax
+	
+	pop bx
+	pop ax
+	ret
+MOVE_SNAKE endp
+PRINT_SNAKE proc near
+	push ax
+	push si
+	push bx
+	;clear the screen
+	; mov ax, 03h
+	; int 10h
+	;repair the backgroud
+	mov bx,[snake_previous_last_cell]
+	mov al,0h
+	mov ah,backgroud_color
+	mov es:[bx],ax
+	
+	;print head
+	mov al,'o'
+	mov ah, 10h
+	mov bx, snake_body[0d]
+	mov es:[bx], ax
+	;if the snake has no body(only head) - jump to the end of the function
+	cmp snake_len,2h
+	jz END_PRINT_SNAKE
+	;print the rest if the snake
+	;snake color(body)
+	mov al,0h
+	mov ah, 10h
+	
+	mov si,2h
+	PRINT_SNAKE_LOOP:
+		mov bx, snake_body[si]
+		mov es:[bx], ax
+		;next iteration	
+		add si,2h
+		cmp si, [snake_len]
+		jnz PRINT_SNAKE_LOOP
+		
+END_PRINT_SNAKE:	
+	pop bx
+	pop si
+	pop ax
+	ret
+PRINT_SNAKE endp
+
+PRINT_PLAYER_SCORE proc near
+	push ax
+	push bx
+	mov ah,player_score_color
+	
+	mov bx,0h
+	mov bl,[player_score]
+	; low
+	mov al, ascii[bx + 256d]
+	mov es:[player_score_label_offset],ax
+	; height
+	mov al, ascii[bx]
+	mov es:[player_score_label_offset-2d],ax
+	; label
+	mov al,':'
+	mov es:[player_score_label_offset-4d],ax
+	
+	mov al,'E'
+	mov es:[player_score_label_offset-6d],ax
+	
+	mov al,'R'
+	mov es:[player_score_label_offset-8d],ax
+	
+	mov al,'O'
+	mov es:[player_score_label_offset-10d],ax
+	
+	mov al,'C'
+	mov es:[player_score_label_offset-12d],ax
+	
+	mov al,'S'
+	mov es:[player_score_label_offset-14d],ax
+	
+
+	pop bx
+	pop ax
+	ret
+PRINT_PLAYER_SCORE endp
+INIT_SCREEN proc near
+	push ax
 	push cx
-	push es
-
-	mov bx , 0b800h
-	mov es , bx
-	mov bx , 1
-
-	mov cx , 2000
-
-changeScreen:
-	inc byte ptr es:[bx]
-	add bx , 2
-	loop changeScreen
-
-	pop es
+	push si
+	; graphics mode
+	mov ah,00h
+	mov al,13h
+	int 10h
+	; set screen segment 
+	mov ax, 0b800h
+	mov es, ax
+	; clear the screen
+	mov ax, 03h
+	int 10h
+	call WRITE_SCREEN_BACKGROUND
+	call PRINT_PLAYER_SCORE
+	; write the first food
+	mov si, [food_location]
+	mov al,food_icon
+	mov ah,food_color
+	mov es:[si],ax
+	
+	; print start game msg
+	mov dx, offset msg_start_game
+	mov ah, 9h
+	int 21h
+	; --hide text-cusor--	
+	pop si
 	pop cx
+	pop ax
+	ret
+INIT_SCREEN endp
+
+WRITE_SCREEN_BACKGROUND proc near
+	push si
+	push ax
+	; set backgroud
+	mov al,0h
+	mov ah,backgroud_color
+	mov si,0
+INIT_BACKGROUND_LOOP:
+	
+	mov es:[si],ax
+	
+	add si,2d
+	cmp si,25d*80d*2d
+	jnz INIT_BACKGROUND_LOOP
+	
+	pop ax
+	pop si
+	ret
+WRITE_SCREEN_BACKGROUND endp
+
+INIT_SCREEN_BACK_TO_OS proc near
+	push ax
+	push cx
+	;clear the screen
+	mov ax, 03h
+	int 10h
+	; normal text mode
+	mov ah,03h
+	mov al,13h
+	int 10h
+
+	pop cx
+	pop ax
+	ret
+INIT_SCREEN_BACK_TO_OS endp
+
+ 
+INIT_SNAKE_BODY proc near
+	; init snake_body
+	mov word ptr snake_body[6d],4d + 3d*screen_width*2d
+	mov word ptr snake_body[4d],6d + 3d*screen_width*2d
+	mov word ptr snake_body[2d],8d + 3d*screen_width*2d
+	mov word ptr snake_body[0d],10d + 3d*screen_width*2d
+	; sizeX2
+	mov word ptr [snake_len],8d
+
+	ret
+INIT_SNAKE_BODY endp
+; update [direction] accordingly. if there is no new key-event direction will stay the same.
+; ecs will quit the game
+GET_DIRECTION_BY_KEY proc near
+	; check for a key storke
+	push ax
+	push bx
+	mov ax, 0h
+	mov ah,01h
+	int 16h	
+	
+	; zero flag is on if there was no event
+	jz END_GET_DIRECTION_BY_KEY
+	; esc key
+	cmp ah,END_GAME_KEY
+	jz GET_DIRECTION_BY_KEY_EXIT_GAME_IS_ON
+	
+	;if |new direction - old direction| == 3d or 5d it's a valid move(the snake cant turn backward)
+	mov bh,ah
+	mov bl,[snake_direction]
+	sub bh,bl
+	cmp bh,3d
+	jz GET_DIRECTION_BY_KEY_VALID_MOVE
+	cmp bh,5d
+	jz GET_DIRECTION_BY_KEY_VALID_MOVE
+	neg bh
+	cmp bh,3d
+	jz GET_DIRECTION_BY_KEY_VALID_MOVE
+	cmp bh,5d
+	jz GET_DIRECTION_BY_KEY_VALID_MOVE
+	; invalid move:
+	; clear key buffer
+	mov ah,0Ch
+	int 21h	
+	jmp END_GET_DIRECTION_BY_KEY
+	
+GET_DIRECTION_BY_KEY_VALID_MOVE:
+	mov [snake_direction], ah
+	; clear key buffer
+	mov ah,0Ch
+	int 21h	
+
+	jmp END_GET_DIRECTION_BY_KEY
+GET_DIRECTION_BY_KEY_EXIT_GAME_IS_ON:
+	mov byte ptr [EXIT], 1h
+	; clear key buffer
+	mov ah,0Ch
+	int 21h	
+END_GET_DIRECTION_BY_KEY:
+	pop bx
+	pop ax
+	ret
+GET_DIRECTION_BY_KEY endp
+
+; the last cell overrided
+SHR_ARRAY proc near
+	push bx
+	push ax
+	push si
+	
+	mov si,[snake_len]
+	sub si,2h
+	L1:
+		mov ax,snake_body[si - 2h]
+		mov snake_body[si], ax
+		;next iteration
+		sub si,2h
+		cmp si,0h
+		jnz L1
+	pop si
+	pop ax
 	pop bx
 	ret
+SHR_ARRAY endp 
 
-greedy_snake_end:	
-	nop
-
-
-
-
-
-
-
-;-------------------------------------------
-set_new_int9:
-	mov bx , 0
-	mov es , bx
-
-	cli
-	mov word ptr es:[9*4] , offset new_int9 - offset greedy_snake + 7e00h
-	mov word ptr es:[9*4+2] , 0
-	sti
-
-	ret
-
-
-;-------------------------------------------
-sav_old_int9:        ; 保存原来的9h号处理键盘中断
-	mov bx , 0
-	mov es , bx
 	
-	cli    ; IF=0，不允许其它外中断
-	push es:[9*4]
-	pop es:[200h]
-	push es:[9*4+2]
-	pop es:[202h]
-	sti
-	ret
-
-
-;-------------------------------------------
-cpy_greedy_snake:
-	mov bx , cs
-	mov ds , bx
-	mov si , offset greedy_snake
-
-	mov bx , 0
-	mov es , bx 
-	mov di , 7e00h  ; 
-
-	mov cx , offset greedy_snake_end - offset greedy_snake
-	cld
-	rep movsb
-
-	ret
-
-code ends
-end start
+end MAIN
+	
