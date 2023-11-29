@@ -5,9 +5,9 @@
     screen_hight dw 200
     screen_width dw 320
     score_offset equ screen_hight*screen_width
-    color db 00h    ;black
+    color db 0fh    ;white
     ground_color db 06h;brown
-.stack
+.stack 100h
 
 .code
 main proc
