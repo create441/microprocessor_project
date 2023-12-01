@@ -21,7 +21,7 @@ main proc
     mov ds,ax
     call INIT_BACKGROUND
 GAME_LOOP:
-    call SPACE_ESC
+    call SPACE_OR_ESC
     cmp exit,01h
     jnz GAME_LOOP
 ;test(press any key to exit) 
@@ -122,8 +122,10 @@ CHARACTOR_LOOP_CL:
         ret
 WRITE_CHARACTOR_CL endp
 ;是否有跳躍或離開
-SPACE_ESC proc
+SPACE_OR_ESC proc
     push ax
+    mov ax,0c00h;clear keyboard buffer
+    int 21h
     mov ax,01h
     int 16h
 .if al==1bh
@@ -133,7 +135,7 @@ SPACE_ESC proc
 .endif
     pop ax
     ret
-SPACE_ESC endp
+SPACE_OR_ESC endp
 
 ;from 320*160 to 320*40
 CHARACTOR_JUMP proc
