@@ -20,20 +20,35 @@ ENDM
     exit db 0h
     score dw 0h
     highest_score dw 0h
-    mesg_1 db 'ESC to exit,Space jump and start',0ah,0Dh,'HI = ','$'
+    mesg_1 db 'ESC to exit,Space jump and start',0ah,0Dh,'$'
     mesg_2 db 0ah,0dh,'press Space to restart the game','$'
     end_game_over db 01h
+    
+    ;lower left corner  lower_left_next(the beging of last line minus 1),lower_left_down(the beging of last line plus a line(320)),lower right corner lower_right_next(the last position plus 1),lower_right_down(the last postion plus a line(320))
+    lower_left_next dw 0000h
+    lower_left_down dw 0000h
+    lower_right_next dw 0000h
+    lower_right_down dw 0000h
+    confilct db 0h
+
+    ;obstacle position
+    obstacle_position dw ?
+    obstacle_color db 00h;black
+
 
 .stack 100h
 
 .code
-main proc
+main:
     mov ax,@data
     mov ds,ax
     call INIT_BACKGROUND
 GAME_LOOP:
 .if end_game_over == 01h
+    call PLAYER_SCORE
     PRINT_STRING mesg_2
+    mov dx,0000h
+    mov score,dx
     call RESTART
     call INIT_BACKGROUND
     cmp exit,01h
@@ -47,7 +62,7 @@ exit_program:
 
     mov ax,4c00h
     int 21h
-main endp
+
 ;set the vedio segment 0a000h and go into mode 13h
 INIT_BACKGROUND proc
     push ax
@@ -172,21 +187,35 @@ JUMP_LOOP_UP:
     call WRITE_CHARACTOR_CL
     sub charactor_position,bx
     call WRITE_CHARACTOR
+    call KEEP_TEST_POINT
+    call TEST_CONFLICT
+.if confilct == 01h
+    call RESTART
+.endif
+
     cmp charactor_position,(320d*40d)+20
     call DELAY
+    
     jnz JUMP_LOOP_UP
+
 JUMP_LOOP_DOWN:
     call WRITE_CHARACTOR_CL
     add charactor_position,bx
     call WRITE_CHARACTOR
+    call KEEP_TEST_POINT
+    call TEST_CONFLICT
+.if confilct == 01h
+    call RESTART
+.endif
     cmp charactor_position,38420d
     call DELAY
+    
     jnz JUMP_LOOP_DOWN
     pop di
     pop ax
     ret
 CHARACTOR_JUMP endp
-;description
+;DELAY cx:dx microsecond
 DELAY PROC
     push ax
     push dx
@@ -223,15 +252,112 @@ RESTART proc
 RESTART endp
 
 ASCII_OUTPUT proc
-
-
-
-
+        push ax
+        push dx
+        mov ah,02h
+        mov dl,'H'
+        int 21h
+        mov dl,'I'
+        int 21h
+        mov dl,':'
+        int 21h
+        mov dx,score
+        mov cx,04h
+score_hex_loop: 
+        push cx
+        mov cl,04h
+        rol dx,cl
+        pop cx
+        push dx
+        and dl,0fh
+.if dl > 09h
+        add dl,'7'
+.else    
+        add dl,'0'
+.endif 
+        int 21h
+        pop dx
+        loop score_hex_loop
+        mov dl,' '
+        int 21h   
+        mov dx,highest_score
+        mov cx,04h
+h_score_hex_loop:
+        push cx        
+        mov cl,04h
+        rol dx,cl
+        pop cx
+        push dx
+        and dl,0fh
+.if dl > 09h
+        add dl,'7'
+.else    
+        add dl,'0'
+.endif 
+        int 21h
+        pop dx
+        loop h_score_hex_loop
+        pop dx
+        pop ax
+        ret
 ASCII_OUTPUT endp
 
-OBASTCLE proc
+OBSTACLE proc
+        push ax
+
+        pop ax
+        ret
+OBSTACLE endp
+
+OBSTACLE_MOVE proc
+
+OBSTACLE_MOVE endp
+
+KEEP_TEST_POINT proc
+        push dx
+        push bx
+        mov dx,charactor_position
+        mov lower_left_next,dx
+        sub lower_left_next,21d
+        mov lower_left_down,dx
+        add lower_left_down,320d
+        mov lower_right_next,dx
+        add lower_right_next,1d
+        mov lower_right_down,dx
+        add lower_right_down,320d
+        pop bx       
+        pop dx
+        ret
+KEEP_TEST_POINT endp
+
+TEST_CONFLICT proc
         push ax
 
 
-OBASTCLE endp
+
+        pop ax
+        ret
+TEST_CONFLICT endp
+
+RANDOM_OBSTACLE_GENERATE proc
+
+RANDOM_OBSTACLE_GENERATE endp
+
+OBSTACLE_BORDER proc
+
+OBSTACLE_BORDER endp
+
+PLAYER_SCORE proc
+        push ax
+        push dx
+        mov dx,score
+.if dx >= highest_score
+        mov highest_score,dx
+.endif
+        call ASCII_OUTPUT
+        pop dx
+        pop ax
+        ret
+PLAYER_SCORE endp
+
 end main
