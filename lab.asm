@@ -24,7 +24,8 @@ ENDM
     mesg_2 db 0ah,0dh,'press Space to restart the game','$'
     end_game_over db 01h
     
-    ;lower left corner  lower_left_next(the beging of last line minus 1),lower_left_down(the beging of last line plus a line(320)),lower right corner lower_right_next(the last position plus 1),lower_right_down(the last postion plus a line(320))
+    ;lower left corner  lower_left_next(the beging of last line minus 1),lower_left_down(the beging of last line plus a line(320)),
+    ;lower right corner lower_right_next(the last position plus 1),lower_right_down(the last postion plus a line(320))
     lower_left_next dw 0000h
     lower_left_down dw 0000h
     lower_right_next dw 0000h
