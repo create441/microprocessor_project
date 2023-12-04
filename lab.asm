@@ -17,6 +17,7 @@ ENDM
     charactor_init dw 38420d ;320*120+40,charactor(40*20)
     charactor_color db 04h  
     charactor_position dw 38420d
+    charactor_last_position dw ?
     exit db 0h
     score dw 0h
     highest_score dw 0h
@@ -154,7 +155,8 @@ CHARACTOR_LOOP_CL:
         inc dx
     .if dx < 40d
         jmp CHARACTOR_LOOP_CL
-    .endif    
+    .endif   
+        mov charactor_last_position,di
         pop dx
         pop cx
         pop di
@@ -317,7 +319,7 @@ OBSTACLE_MOVE endp
 KEEP_TEST_POINT proc
         push dx
         push bx
-        mov dx,charactor_position
+        mov dx,charactor_last_position
         mov lower_left_next,dx
         sub lower_left_next,21d
         mov lower_left_down,dx
