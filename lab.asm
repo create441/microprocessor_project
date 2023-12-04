@@ -11,7 +11,6 @@ ENDM
 .data
     screen_hight dw 200
     screen_width dw 320
-    score_offset equ screen_hight*screen_width
     color db 0fh    ;white
     ground_color db 06h;brown
     charactor_init dw 38420d ;320*120+40,charactor(40*20)
@@ -25,13 +24,15 @@ ENDM
     mesg_2 db 0ah,0dh,'press Space to restart the game','$'
     end_game_over db 01h
     
-    ;lower left corner  lower_left_next(the beging of last line minus 1),lower_left_down(the beging of last line plus a line(320)),
-    ;lower right corner lower_right_next(the last position plus 1),lower_right_down(the last postion plus a line(320))
-    lower_left_next dw 0000h
-    lower_left_down dw 0000h
-    lower_right_next dw 0000h
-    lower_right_down dw 0000h
-    confilct db 0h
+    ;lower left corner  element0(the beging of last line minus 1),element1(the beging of last line plus a line(320)),
+    ;lower right corner element2(the last position plus 1),element3(the last postion plus a line(320))
+    
+    test_point dw 4 dup(0)
+    ;lower_left_next dw 0000h
+    ;lower_left_down dw 0000h
+    ;lower_right_next dw 0000h
+    ;lower_right_down dw 0000h
+    ;confilct db 0h
 
     ;obstacle position
     obstacle_position dw ?
@@ -305,6 +306,44 @@ h_score_hex_loop:
         ret
 ASCII_OUTPUT endp
 
+KEEP_TEST_POINT proc
+        push dx
+        push bx
+        mov dx,charactor_last_position
+        mov test_point[0],dx
+        sub test_point[0],21d
+        mov test_point[2],dx
+        add test_point[2],320d
+        mov test_point[4],dx
+        add test_point[4],1d
+        mov test_point[6],dx
+        add test_point[6],320d
+        pop bx       
+        pop dx
+        ret
+KEEP_TEST_POINT endp
+
+TEST_CONFLICT proc
+        push ax
+        push di
+        push cx
+        mov cx,4d
+        mov di,test_point[0]
+        mov al,obstacle_color
+test_loop:
+.if es:[di] == al
+        mov exit,01h
+        jmp exit_test
+.endif  
+        add di,2d
+        loop test_loop
+exit_test:
+        pop cx
+        pop di
+        pop ax
+        ret
+TEST_CONFLICT endp
+
 OBSTACLE proc
         push ax
 
@@ -315,32 +354,6 @@ OBSTACLE endp
 OBSTACLE_MOVE proc
 
 OBSTACLE_MOVE endp
-
-KEEP_TEST_POINT proc
-        push dx
-        push bx
-        mov dx,charactor_last_position
-        mov lower_left_next,dx
-        sub lower_left_next,21d
-        mov lower_left_down,dx
-        add lower_left_down,320d
-        mov lower_right_next,dx
-        add lower_right_next,1d
-        mov lower_right_down,dx
-        add lower_right_down,320d
-        pop bx       
-        pop dx
-        ret
-KEEP_TEST_POINT endp
-
-TEST_CONFLICT proc
-        push ax
-
-
-
-        pop ax
-        ret
-TEST_CONFLICT endp
 
 RANDOM_OBSTACLE_GENERATE proc
 
