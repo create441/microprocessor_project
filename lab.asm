@@ -18,7 +18,7 @@ ENDM
     charactor_init dw 38440d ;320*120+40,charactor(40*20)
     charactor_color db 04h  
     charactor_position dw 38440d
-    charactor_last_position dw ?
+    charactor_last_position dw 51260d
     exit_ db 0h
     score dw 0h
     highest_score dw 0h
@@ -63,10 +63,15 @@ GAME_LOOP:
 .endif
     ;call RANDOM_OBSTACLE_GENERATE
     ;invoke OBSTACLE,obstacle_color
+    call KEEP_TEST_POINT
+    call TEST_CONFLICT
+.if end_game_over == 01h
+    jmp GAME_LOOP
+.endif
     call OBSTACLE_MOVE
     call DELAY 
     call SPACE_ESC
-    
+
     cmp exit_,01h
     jnz GAME_LOOP
 exit_program:
@@ -136,6 +141,7 @@ CHARACTOR_LOOP:
     .if dx < 40d
         jmp CHARACTOR_LOOP
     .endif    
+        mov charactor_last_position,di
         pop dx
         pop cx
         pop di
@@ -166,7 +172,6 @@ CHARACTOR_LOOP_CL:
     .if dx < 40d
         jmp CHARACTOR_LOOP_CL
     .endif   
-        mov charactor_last_position,di
         pop dx
         pop cx
         pop di
@@ -197,32 +202,32 @@ CHARACTOR_JUMP proc
 JUMP_LOOP_UP:
     call WRITE_CHARACTOR_CL
     sub charactor_position,bx
-    call OBSTACLE_MOVE
     call WRITE_CHARACTOR
-    ;call KEEP_TEST_POINT
-    ;call TEST_CONFLICT
+    call KEEP_TEST_POINT
+    call TEST_CONFLICT
 .if end_game_over == 01h
-    call RESTART
+    jmp exit_jump
 .endif
+    call OBSTACLE_MOVE
     cmp charactor_position,(320d*40d)+40
-    call DELAY
-    
+    call DELAY   
     jnz JUMP_LOOP_UP
 
 JUMP_LOOP_DOWN:
     call WRITE_CHARACTOR_CL
     add charactor_position,bx
-    call OBSTACLE_MOVE
     call WRITE_CHARACTOR
-    ;call KEEP_TEST_POINT
-    ;call TEST_CONFLICT
+    call KEEP_TEST_POINT
+    call TEST_CONFLICT
 .if end_game_over == 01h
-    call RESTART
+    jmp exit_jump
 .endif
+    call OBSTACLE_MOVE
     cmp charactor_position,38440d
     call DELAY
     
     jnz JUMP_LOOP_DOWN
+exit_jump:
     pop di
     pop ax
     ret
@@ -252,6 +257,13 @@ INIT_SCREEN endp
 
 RESTART proc
         push ax
+        mov dx,charactor_init
+        mov charactor_position,dx
+        mov dx,3h
+        mov obstacle_position[0],41700d
+        mov obstacle_position[2],41800d
+        mov obstacle_position[4],41899d
+        mov obstacle_number,dx
         mov ah,00h
         int 16h
 .if al == 20h
@@ -259,6 +271,8 @@ RESTART proc
 .elseif al == 1bh
         mov exit_,01h
 .endif
+        mov ax,0c00h;clear keyboard buffer
+        int 21h
         pop ax
         ret   
 RESTART endp
@@ -379,13 +393,13 @@ OBSTACLE_MOVE proc
         jz leave_move
         invoke OBSTACLE,color
 .if word ptr [obstacle_position] != 0000h      
-        sub word ptr [obstacle_position],4d
+        sub word ptr [obstacle_position],1d
 .endif
 .if word ptr [obstacle_position+2] != 0000h      
-        sub word ptr [obstacle_position+2],4d
+        sub word ptr [obstacle_position+2],1d
 .endif
 .if word ptr [obstacle_position+4] != 0000h      
-        sub word ptr [obstacle_position+4],4d
+        sub word ptr [obstacle_position+4],1d
 .endif     
         call OBSTACLE_BOUNDARY
         invoke OBSTACLE,obstacle_color
