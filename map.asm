@@ -1,34 +1,71 @@
-.model small
+PRINT_STRING  MACRO params
+    push ax
+    mov ah,09h
+    mov dx,offset params
+    int 21h
+    pop ax
+ENDM
 
+.model small
 
 .data
     screen_hight dw 200
     screen_width dw 320
-    score_offset equ screen_hight*screen_width
     color db 0fh    ;white
     ground_color db 06h;brown
     charactor_init dw 38420d ;320*120+40,charactor(40*20)
     charactor_color db 04h  
     charactor_position dw 38420d
+    charactor_last_position dw ?
     exit db 0h
+    score dw 0h
+    highest_score dw 0h
+    mesg_1 db 'ESC to exit,Space jump and start',0ah,0Dh,'$'
+    mesg_2 db 0ah,0dh,'press Space to restart the game','$'
+    end_game_over db 01h
+    
+    ;lower left corner  element0(the beging of last line minus 1),element1(the beging of last line plus a line(320)),
+    ;lower right corner element2(the last position plus 1),element3(the last postion plus a line(320))
+    
+    test_point dw 4 dup(0)
+    ;lower_left_next dw 0000h
+    ;lower_left_down dw 0000h
+    ;lower_right_next dw 0000h
+    ;lower_right_down dw 0000h
+    ;confilct db 0h
+
+    ;obstacle position
+    obstacle_position dw ?
+    obstacle_color db 00h;black
 
 
 .stack 100h
 
 .code
-main proc
+main:
     mov ax,@data
     mov ds,ax
     call INIT_BACKGROUND
 GAME_LOOP:
-    call SPACE_OR_ESC
+.if end_game_over == 01h
+    call PLAYER_SCORE
+    PRINT_STRING mesg_2
+    mov dx,0000h
+    mov score,dx
+    call RESTART
+    call INIT_BACKGROUND
+    cmp exit,01h
+    jz exit_program
+.endif
+    call SPACE_ESC
     cmp exit,01h
     jnz GAME_LOOP
-;test(press any key to exit) 
-    ;mov a
+exit_program:
+    call INIT_SCREEN
+
     mov ax,4c00h
     int 21h
-main endp
+
 ;set the vedio segment 0a000h and go into mode 13h
 INIT_BACKGROUND proc
     push ax
@@ -38,6 +75,7 @@ INIT_BACKGROUND proc
     int 10h
     call WRITE_SCREEN_BACKGROUND
     call WRITE_CHARACTOR
+    PRINT_STRING mesg_1
     pop ax
     ret
 INIT_BACKGROUND endp
@@ -80,20 +118,22 @@ CHARACTOR_LOOP:
         mov es:[di],ah
         inc di
         inc cx
-        cmp cx,20d
-        jnz CHARACTOR_LOOP
+    .if cx < 20d
+        jmp CHARACTOR_LOOP
+    .endif
         xor cx,cx
         add di,300d
         inc dx
-        cmp dx,40d
-        jnz CHARACTOR_LOOP
+    .if dx < 40d
+        jmp CHARACTOR_LOOP
+    .endif    
         pop dx
         pop cx
         pop di
         pop ax
         ret
 WRITE_CHARACTOR endp
-;clear old position of charator,same with WRITE_CHARATOR except color
+;清除舊的角色
 WRITE_CHARACTOR_CL proc
         push ax
         push di
@@ -108,13 +148,16 @@ CHARACTOR_LOOP_CL:
         mov es:[di],ah
         inc di
         inc cx
-        cmp cx,20d
-        jnz CHARACTOR_LOOP_CL
+    .if cx < 20d
+        jmp CHARACTOR_LOOP_CL
+    .endif
         xor cx,cx
         add di,300d
         inc dx
-        cmp dx,40d
-        jnz CHARACTOR_LOOP_CL
+    .if dx < 40d
+        jmp CHARACTOR_LOOP_CL
+    .endif   
+        mov charactor_last_position,di
         pop dx
         pop cx
         pop di
@@ -122,7 +165,7 @@ CHARACTOR_LOOP_CL:
         ret
 WRITE_CHARACTOR_CL endp
 ;是否有跳躍或離開
-SPACE_OR_ESC proc
+SPACE_ESC proc
     push ax
     mov ax,0c00h;clear keyboard buffer
     int 21h
@@ -135,7 +178,7 @@ SPACE_OR_ESC proc
 .endif
     pop ax
     ret
-SPACE_OR_ESC endp
+SPACE_ESC endp
 
 ;from 320*160 to 320*40
 CHARACTOR_JUMP proc
@@ -143,20 +186,34 @@ CHARACTOR_JUMP proc
     push di
     ;mov ax,0013h
     ;int 10h
-    mov bx,1280d;4 lines 320*4
-JUMP_LOOP_UP:;upward
-    call WRITE_CHARACTOR_CL;clear the old charator
+    mov bx,1280d;4 lines
+JUMP_LOOP_UP:
+    call WRITE_CHARACTOR_CL
     sub charactor_position,bx
     call WRITE_CHARACTOR
+    call KEEP_TEST_POINT
+    call TEST_CONFLICT
+.if end_game_over == 01h
+    call RESTART
+.endif
+
     cmp charactor_position,(320d*40d)+20
-    call DELAY ;delay jump
+    call DELAY
+    
     jnz JUMP_LOOP_UP
-JUMP_LOOP_DOWN:;downward
+
+JUMP_LOOP_DOWN:
     call WRITE_CHARACTOR_CL
     add charactor_position,bx
     call WRITE_CHARACTOR
+    call KEEP_TEST_POINT
+    call TEST_CONFLICT
+.if end_game_over == 01h
+    call RESTART
+.endif
     cmp charactor_position,38420d
     call DELAY
+    
     jnz JUMP_LOOP_DOWN
     pop di
     pop ax
@@ -167,7 +224,7 @@ DELAY PROC
     push ax
     push dx
     push cx
-    mov ax,8600h ;wait
+    mov ax,8600h
     mov cx,0000h
     mov dx,04000h
     int 15h
@@ -176,4 +233,147 @@ DELAY PROC
     pop ax
     ret
 DELAY ENDP
+
+INIT_SCREEN proc
+        push ax
+        mov ax,03h
+        int 10h
+        pop ax
+        ret
+INIT_SCREEN endp
+
+RESTART proc
+        push ax
+        mov ah,00h
+        int 16h
+.if al == 20h
+        mov end_game_over,00h 
+.elseif al == 1bh
+        mov exit,01h
+.endif
+        pop ax
+        ret   
+RESTART endp
+
+ASCII_OUTPUT proc
+        push ax
+        push dx
+        mov ah,02h
+        mov dl,'H'
+        int 21h
+        mov dl,'I'
+        int 21h
+        mov dl,':'
+        int 21h
+        mov dx,score
+        mov cx,04h
+score_hex_loop: 
+        push cx
+        mov cl,04h
+        rol dx,cl
+        pop cx
+        push dx
+        and dl,0fh
+.if dl > 09h
+        add dl,'7'
+.else    
+        add dl,'0'
+.endif 
+        int 21h
+        pop dx
+        loop score_hex_loop
+        mov dl,' '
+        int 21h   
+        mov dx,highest_score
+        mov cx,04h
+h_score_hex_loop:
+        push cx        
+        mov cl,04h
+        rol dx,cl
+        pop cx
+        push dx
+        and dl,0fh
+.if dl > 09h
+        add dl,'7'
+.else    
+        add dl,'0'
+.endif 
+        int 21h
+        pop dx
+        loop h_score_hex_loop
+        pop dx
+        pop ax
+        ret
+ASCII_OUTPUT endp
+
+KEEP_TEST_POINT proc
+        push dx
+        push bx
+        mov dx,charactor_last_position
+        mov test_point[0],dx
+        sub test_point[0],21d
+        mov test_point[2],dx
+        add test_point[2],320d
+        mov test_point[4],dx
+        add test_point[4],1d
+        mov test_point[6],dx
+        add test_point[6],320d
+        pop bx       
+        pop dx
+        ret
+KEEP_TEST_POINT endp
+
+TEST_CONFLICT proc
+        push ax
+        push di
+        push cx
+        mov cx,4d
+        mov di,test_point[0]
+        mov al,obstacle_color
+test_loop:
+.if es:[di] == al
+        mov exit,01h
+        jmp exit_test
+.endif  
+        add di,2d
+        loop test_loop
+exit_test:
+        pop cx
+        pop di
+        pop ax
+        ret
+TEST_CONFLICT endp
+
+OBSTACLE proc
+        push ax
+
+        pop ax
+        ret
+OBSTACLE endp
+
+OBSTACLE_MOVE proc
+
+OBSTACLE_MOVE endp
+
+RANDOM_OBSTACLE_GENERATE proc
+
+RANDOM_OBSTACLE_GENERATE endp
+
+OBSTACLE_BORDER proc
+
+OBSTACLE_BORDER endp
+
+PLAYER_SCORE proc
+        push ax
+        push dx
+        mov dx,score
+.if dx >= highest_score
+        mov highest_score,dx
+.endif
+        call ASCII_OUTPUT
+        pop dx
+        pop ax
+        ret
+PLAYER_SCORE endp
+
 end main
