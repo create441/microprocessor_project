@@ -1,3 +1,4 @@
+;.386
 PRINT_STRING  MACRO params
     push ax
     mov ah,09h
@@ -27,9 +28,9 @@ ENDM
         
     ;obstacle position
     obstacle_init dw 41899d;320*130+300 起始點
-    obstacle_position dw 41800d,41850d,41899d
+    obstacle_position dw 0d,0d
     obstacle_color db 00h;black
-    obstacle_number dw 3d
+    obstacle_number dw 2d
     obstacle_position_index dw 0d
 
 
@@ -66,10 +67,12 @@ GAME_LOOP:
         xor di,di
         xor ah,ah
 
-
+    ;call SPACE_ESC
     call OBSTACLE_MOVE
-    call DELAY 
+    call DELAY
     call SPACE_ESC
+    ;call OBSTACLE_MOVE
+    ;call DELAY2
 
     cmp exit_,01h
     jnz GAME_LOOP
@@ -201,7 +204,7 @@ SPACE_ESC endp
 CHARACTOR_JUMP proc
     push ax
     push di
-    mov bx,1280d;4 lines
+    mov bx,2560d;4 lines
 JUMP_LOOP_UP:
     call RANDOM_OBSTACLE_GENERATE
     call WRITE_CHARACTOR_CL
@@ -211,7 +214,6 @@ JUMP_LOOP_UP:
 .if end_game_over == 01h
     jmp exit_jump
 .endif
-    
     cmp charactor_position,(320d*40d)+40
     call DELAY  
     jnz JUMP_LOOP_UP
@@ -227,7 +229,6 @@ JUMP_LOOP_DOWN:
 .endif
     cmp charactor_position,38440d
     call DELAY
-    ;call RANDOM_OBSTACLE_GENERATE
     jnz JUMP_LOOP_DOWN
 exit_jump:
     pop di
@@ -249,6 +250,21 @@ DELAY PROC
     ret
 DELAY ENDP
 
+;DELAY cx:dx microsecond
+DELAY2 PROC
+    push ax
+    push dx
+    push cx
+    mov ax,8600h
+    mov cx,0000h
+    mov dx,03ff0h
+    int 15h
+    pop cx
+    pop dx
+    pop ax
+    ret
+DELAY2 ENDP
+
 INIT_SCREEN proc
         push ax
         mov ax,03h
@@ -262,7 +278,7 @@ RESTART proc
         mov charactor_position,38440d
         mov obstacle_position[0],0
         mov obstacle_position[2],0
-        mov obstacle_position[4],0
+        ;mov obstacle_position[4],0
         mov obstacle_number,0d
         mov obstacle_position_index,0d
         mov ah,00h
@@ -353,18 +369,19 @@ OBSTACLE_MOVE proc
         push si
         mov cx,obstacle_number
         mov si,0d
+        mov ax,3d;each move shift
         cmp cx,0
         jz leave_move
         invoke OBSTACLE,color
 .if word ptr [obstacle_position] != 0000h      
-        sub word ptr [obstacle_position],4d
+        sub word ptr [obstacle_position],ax
 .endif
 .if word ptr [obstacle_position+2] != 0000h      
-        sub word ptr [obstacle_position+2],4d
+        sub word ptr [obstacle_position+2],ax
 .endif
-.if word ptr [obstacle_position+4] != 0000h      
-        sub word ptr [obstacle_position+4],4d
-.endif     
+;.if word ptr [obstacle_position+4] != 0000h      
+;        sub word ptr [obstacle_position+4],ax
+;.endif     
         call OBSTACLE_BOUNDARY
         invoke OBSTACLE,obstacle_color
 leave_move:
@@ -410,7 +427,7 @@ RANDOM_OBSTACLE_GENERATE proc
         push dx
         push bx
         push si
-.if obstacle_number == 3
+.if obstacle_number == 2;最多兩個障礙物
         jmp leave_generate
 .endif
         mov ah,2ch
@@ -427,7 +444,7 @@ RANDOM_OBSTACLE_GENERATE proc
         xor ch,ch
 .endif
 
-.if dx > 140 && (bx > 70 || cx > 30 ) 
+.if dx > 150 && (bx > 95 || cx != 0d ) 
         mov bx,obstacle_init
         mov obstacle_position[si],bx
         inc word ptr [obstacle_number]
@@ -445,10 +462,10 @@ SHIFT_OBSTACLE proc
         push ax
         mov ax,obstacle_position[2]
         mov obstacle_position[0],ax
-        mov ax,obstacle_position[4]
-        mov obstacle_position[2],ax
+        ;mov ax,obstacle_position[4]
+        ;mov obstacle_position[2],ax
         xor ax,ax
-        mov obstacle_position[4],ax
+        mov obstacle_position[2],ax
         pop ax
         ret
 SHIFT_OBSTACLE endp
