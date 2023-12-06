@@ -1,4 +1,4 @@
-include Irvine16.inc
+;include Irvine16.inc
 
 PRINT_STRING  MACRO params
     push ax
@@ -8,7 +8,7 @@ PRINT_STRING  MACRO params
     pop ax
 ENDM
 
-;.model small
+.model small
 
 .data
     screen_hight dw 200
@@ -18,7 +18,7 @@ ENDM
     charactor_init dw 38440d ;320*120+40,charactor(40*20)
     charactor_color db 04h  
     charactor_position dw 38440d
-    charactor_last_position dw 51260d
+    charactor_last_position dw 50940d
     exit_ db 0h
     score dw 0h
     highest_score dw 0h
@@ -34,7 +34,7 @@ ENDM
         
     ;obstacle position
     obstacle_init dw 41899d;320*130+300 起始點
-    obstacle_position dw 41700d,41800d,41899d
+    obstacle_position dw 0d,41800d,41899d
     obstacle_color db 00h;black
     obstacle_number dw 3d
 
@@ -62,12 +62,23 @@ GAME_LOOP:
     jz exit_program
 .endif
     ;call RANDOM_OBSTACLE_GENERATE
-    ;invoke OBSTACLE,obstacle_color
-    call KEEP_TEST_POINT
-    call TEST_CONFLICT
+    invoke OBSTACLE,obstacle_color
+    ;call KEEP_TEST_POINT
+    ;call TEST_CONFLICT
 .if end_game_over == 01h
     jmp GAME_LOOP
 .endif
+
+    mov di,charactor_last_position
+    mov ah,obstacle_color
+.if es:[di] == ah
+     mov end_game_over,01h
+     jmp GAME_LOOP
+.endif
+        xor di,di
+        xor ah,ah
+
+
     call OBSTACLE_MOVE
     call DELAY 
     call SPACE_ESC
@@ -128,7 +139,11 @@ WRITE_CHARACTOR proc
         xor di,di
         mov di,charactor_position
         mov ah,charactor_color
+        mov al,obstacle_color
 CHARACTOR_LOOP:
+.if es:[di] == al
+        mov end_game_over,01h
+.endif
         mov es:[di],ah
         inc di
         inc cx
@@ -138,10 +153,10 @@ CHARACTOR_LOOP:
         xor cx,cx
         add di,300d
         inc dx
-    .if dx < 40d
-        jmp CHARACTOR_LOOP
-    .endif    
-        mov charactor_last_position,di
+    cmp dx,40d
+        jnz CHARACTOR_LOOP  
+        sub di,300d
+        mov charactor_last_position,di 
         pop dx
         pop cx
         pop di
@@ -201,28 +216,30 @@ CHARACTOR_JUMP proc
     mov bx,1280d;4 lines
 JUMP_LOOP_UP:
     call WRITE_CHARACTOR_CL
+    call OBSTACLE_MOVE
     sub charactor_position,bx
     call WRITE_CHARACTOR
-    call KEEP_TEST_POINT
-    call TEST_CONFLICT
+    ;call KEEP_TEST_POINT
+    ;call TEST_CONFLICT
 .if end_game_over == 01h
     jmp exit_jump
 .endif
-    call OBSTACLE_MOVE
+    
     cmp charactor_position,(320d*40d)+40
     call DELAY   
     jnz JUMP_LOOP_UP
 
 JUMP_LOOP_DOWN:
     call WRITE_CHARACTOR_CL
+    call OBSTACLE_MOVE
     add charactor_position,bx
     call WRITE_CHARACTOR
-    call KEEP_TEST_POINT
-    call TEST_CONFLICT
+    ;call KEEP_TEST_POINT
+    ;call TEST_CONFLICT
 .if end_game_over == 01h
     jmp exit_jump
 .endif
-    call OBSTACLE_MOVE
+    ;call OBSTACLE_MOVE
     cmp charactor_position,38440d
     call DELAY
     
@@ -239,7 +256,7 @@ DELAY PROC
     push cx
     mov ax,8600h
     mov cx,0000h
-    mov dx,08000h
+    mov dx,04000h
     int 15h
     pop cx
     pop dx
@@ -325,14 +342,15 @@ TEST_CONFLICT proc
         push di
         push cx
         mov cx,4d
-        mov di,test_point[0]
-        mov al,obstacle_color
+        mov si,0d
+        mov ah,obstacle_color
 test_loop:
-.if es:[di] == al
+        mov di,test_point[si]
+.if es:[di] == ah
         mov end_game_over,01h
         jmp exit_test
 .endif  
-        add di,2d
+        add si,2d
         loop test_loop
 exit_test:
         pop cx
@@ -393,13 +411,13 @@ OBSTACLE_MOVE proc
         jz leave_move
         invoke OBSTACLE,color
 .if word ptr [obstacle_position] != 0000h      
-        sub word ptr [obstacle_position],1d
+        sub word ptr [obstacle_position],4d
 .endif
 .if word ptr [obstacle_position+2] != 0000h      
-        sub word ptr [obstacle_position+2],1d
+        sub word ptr [obstacle_position+2],4d
 .endif
 .if word ptr [obstacle_position+4] != 0000h      
-        sub word ptr [obstacle_position+4],1d
+        sub word ptr [obstacle_position+4],4d
 .endif     
         call OBSTACLE_BOUNDARY
         invoke OBSTACLE,obstacle_color
@@ -417,18 +435,18 @@ CLAER_OBSTACLE proc
         push di
         mov di,obstacle_position[0]
         mov ah,color
-write_obstacle_loop:
+write_obstacle_loop_cl:
         mov es:[di],ah
         inc di
         inc cx
     .if cx < 20d
-        jmp write_obstacle_loop
+        jmp write_obstacle_loop_cl
     .endif
         xor cx,cx
         add di,300d
         inc dx
     .if dx < 30d
-        jmp write_obstacle_loop
+        jmp write_obstacle_loop_cl
     .endif
         mov obstacle_position[0],0d
         call SHIFT_OBSTACLE
@@ -450,9 +468,9 @@ RANDOM_OBSTACLE_GENERATE proc
 .if obstacle_number == 3
         jmp leave_generate
 .endif
-        call Randomize
+        ;call Randomize
         mov ax,50d
-        call RandomRange
+        ;call RandomRange
         mov bx,41d
         div bx
         mov bl,2d
