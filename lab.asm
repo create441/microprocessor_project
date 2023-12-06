@@ -1,5 +1,3 @@
-;include Irvine16.inc
-
 PRINT_STRING  MACRO params
     push ax
     mov ah,09h
@@ -26,15 +24,10 @@ ENDM
     mesg_2 db 0ah,0dh,'press Space to restart the game','$'
     mesg_3 db 'HI=','$'
     end_game_over db 01h
-    
-    ;lower left corner  element0(the beging of last line minus 1),element1(the beging of last line plus a line(320)),
-    ;lower right corner element2(the last position plus 1),element3(the last postion plus a line(320))
-    
-    test_point dw 4 dup(0)
         
     ;obstacle position
     obstacle_init dw 41899d;320*130+300 起始點
-    obstacle_position dw 0d,41800d,41899d
+    obstacle_position dw 41800d,41850d,41899d
     obstacle_color db 00h;black
     obstacle_number dw 3d
 
@@ -63,12 +56,6 @@ GAME_LOOP:
 .endif
     ;call RANDOM_OBSTACLE_GENERATE
     invoke OBSTACLE,obstacle_color
-    ;call KEEP_TEST_POINT
-    ;call TEST_CONFLICT
-.if end_game_over == 01h
-    jmp GAME_LOOP
-.endif
-
     mov di,charactor_last_position
     mov ah,obstacle_color
 .if es:[di] == ah
@@ -219,8 +206,6 @@ JUMP_LOOP_UP:
     call OBSTACLE_MOVE
     sub charactor_position,bx
     call WRITE_CHARACTOR
-    ;call KEEP_TEST_POINT
-    ;call TEST_CONFLICT
 .if end_game_over == 01h
     jmp exit_jump
 .endif
@@ -234,12 +219,9 @@ JUMP_LOOP_DOWN:
     call OBSTACLE_MOVE
     add charactor_position,bx
     call WRITE_CHARACTOR
-    ;call KEEP_TEST_POINT
-    ;call TEST_CONFLICT
 .if end_game_over == 01h
     jmp exit_jump
 .endif
-    ;call OBSTACLE_MOVE
     cmp charactor_position,38440d
     call DELAY
     
@@ -274,13 +256,11 @@ INIT_SCREEN endp
 
 RESTART proc
         push ax
-        mov dx,charactor_init
-        mov charactor_position,dx
-        mov dx,3h
-        mov obstacle_position[0],41700d
-        mov obstacle_position[2],41800d
-        mov obstacle_position[4],41899d
-        mov obstacle_number,dx
+        mov charactor_position,38440d
+        mov obstacle_position[0],0
+        mov obstacle_position[2],0
+        mov obstacle_position[4],0
+        mov obstacle_number,0d
         mov ah,00h
         int 16h
 .if al == 20h
@@ -320,44 +300,6 @@ score_hex_loop:
         ret
 ASCII_OUTPUT endp
 
-KEEP_TEST_POINT proc
-        push dx
-        push bx
-        mov dx,charactor_last_position
-        mov test_point[0],dx
-        sub test_point[0],21d
-        mov test_point[2],dx
-        add test_point[2],320d
-        mov test_point[4],dx
-        add test_point[4],1d
-        mov test_point[6],dx
-        add test_point[6],320d
-        pop bx       
-        pop dx
-        ret
-KEEP_TEST_POINT endp
-
-TEST_CONFLICT proc
-        push ax
-        push di
-        push cx
-        mov cx,4d
-        mov si,0d
-        mov ah,obstacle_color
-test_loop:
-        mov di,test_point[si]
-.if es:[di] == ah
-        mov end_game_over,01h
-        jmp exit_test
-.endif  
-        add si,2d
-        loop test_loop
-exit_test:
-        pop cx
-        pop di
-        pop ax
-        ret
-TEST_CONFLICT endp
 
 OBSTACLE proc near c,color_arg:byte
         push ax
@@ -468,10 +410,10 @@ RANDOM_OBSTACLE_GENERATE proc
 .if obstacle_number == 3
         jmp leave_generate
 .endif
-        ;call Randomize
-        mov ax,50d
-        ;call RandomRange
-        mov bx,41d
+        mov ah,2ch
+        int 21h;CH:CL hour/min,DH:DL second:1/100second
+        mov ax,dx
+        mov bx,7d
         div bx
         mov bl,2d
         mov ax,obstacle_number
