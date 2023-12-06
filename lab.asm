@@ -30,6 +30,7 @@ ENDM
     obstacle_position dw 41800d,41850d,41899d
     obstacle_color db 00h;black
     obstacle_number dw 3d
+    obstacle_position_index dw 0d
 
 
 .stack 100h
@@ -54,7 +55,7 @@ GAME_LOOP:
     cmp exit_,01h
     jz exit_program
 .endif
-    ;call RANDOM_OBSTACLE_GENERATE
+    call RANDOM_OBSTACLE_GENERATE
     invoke OBSTACLE,obstacle_color
     mov di,charactor_last_position
     mov ah,obstacle_color
@@ -202,6 +203,7 @@ CHARACTOR_JUMP proc
     push di
     mov bx,1280d;4 lines
 JUMP_LOOP_UP:
+    call RANDOM_OBSTACLE_GENERATE
     call WRITE_CHARACTOR_CL
     call OBSTACLE_MOVE
     sub charactor_position,bx
@@ -211,10 +213,11 @@ JUMP_LOOP_UP:
 .endif
     
     cmp charactor_position,(320d*40d)+40
-    call DELAY   
+    call DELAY  
     jnz JUMP_LOOP_UP
 
 JUMP_LOOP_DOWN:
+    call RANDOM_OBSTACLE_GENERATE
     call WRITE_CHARACTOR_CL
     call OBSTACLE_MOVE
     add charactor_position,bx
@@ -224,7 +227,7 @@ JUMP_LOOP_DOWN:
 .endif
     cmp charactor_position,38440d
     call DELAY
-    
+    ;call RANDOM_OBSTACLE_GENERATE
     jnz JUMP_LOOP_DOWN
 exit_jump:
     pop di
@@ -261,6 +264,7 @@ RESTART proc
         mov obstacle_position[2],0
         mov obstacle_position[4],0
         mov obstacle_number,0d
+        mov obstacle_position_index,0d
         mov ah,00h
         int 16h
 .if al == 20h
@@ -393,6 +397,7 @@ write_obstacle_loop_cl:
         mov obstacle_position[0],0d
         call SHIFT_OBSTACLE
         dec word ptr [obstacle_number]
+        sub word ptr [obstacle_position_index],2d
         pop di
         pop dx
         pop ax
@@ -412,17 +417,25 @@ RANDOM_OBSTACLE_GENERATE proc
 .endif
         mov ah,2ch
         int 21h;CH:CL hour/min,DH:DL second:1/100second
-        mov ax,dx
-        mov bx,7d
-        div bx
-        mov bl,2d
-        mov ax,obstacle_number
-        mul bl
-        mov si,ax
-.if dx == 0
+        xor dh,dh
+        add dx,70;70~179
+        mov si,obstacle_position_index
+.if obstacle_number != 0
+        mov bx,obstacle_init
+        sub bx,obstacle_position[si]
+.else
+        int 21h
+        mov cx,dx
+        xor ch,ch
+.endif
+
+;xor bx,000000000010011b
+
+.if dx > 140 && (bx > 70 || cx > 30 ) 
         mov bx,obstacle_init
         mov obstacle_position[si],bx
         inc word ptr [obstacle_number]
+        add word ptr [obstacle_position_index],2d
 .endif
 leave_generate:
         pop si
