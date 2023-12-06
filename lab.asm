@@ -404,8 +404,6 @@ write_obstacle_loop_cl:
         ret
 CLAER_OBSTACLE endp
 
-
-;未成功
 ;用ivrine16的函式產生亂數，當亂數除41等於0時且障礙物數量(obstacle_number)不等於三時，再新增一個障礙物
 RANDOM_OBSTACLE_GENERATE proc
         push ax
@@ -428,8 +426,6 @@ RANDOM_OBSTACLE_GENERATE proc
         mov cx,dx
         xor ch,ch
 .endif
-
-;xor bx,000000000010011b
 
 .if dx > 140 && (bx > 70 || cx > 30 ) 
         mov bx,obstacle_init
