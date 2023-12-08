@@ -33,7 +33,6 @@ ENDM
     obstacle_number dw 2d
     obstacle_position_index dw 0d
 
-
 .stack 100h
 
 .code
@@ -66,13 +65,12 @@ GAME_LOOP:
 .endif
         xor di,di
         xor ah,ah
-
-    ;call SPACE_ESC
-    call OBSTACLE_MOVE
-    call DELAY
     call SPACE_ESC
-    ;call OBSTACLE_MOVE
-    ;call DELAY2
+    call OBSTACLE_MOVE
+    call DELAY2
+    call SPACE_ESC
+    call DELAY2
+    call SPACE_ESC
 
     cmp exit_,01h
     jnz GAME_LOOP
@@ -242,7 +240,7 @@ DELAY PROC
     push cx
     mov ax,8600h
     mov cx,0000h
-    mov dx,04000h
+    mov dx,05fffh
     int 15h
     pop cx
     pop dx
@@ -257,7 +255,7 @@ DELAY2 PROC
     push cx
     mov ax,8600h
     mov cx,0000h
-    mov dx,03ff0h
+    mov dx,02fffh
     int 15h
     pop cx
     pop dx
@@ -369,7 +367,7 @@ OBSTACLE_MOVE proc
         push si
         mov cx,obstacle_number
         mov si,0d
-        mov ax,3d;each move shift
+        mov ax,1d;each move shift
         cmp cx,0
         jz leave_move
         invoke OBSTACLE,color
@@ -434,6 +432,7 @@ RANDOM_OBSTACLE_GENERATE proc
         int 21h;CH:CL hour/min,DH:DL second:1/100second
         xor dh,dh
         add dx,70;70~179
+        xor cx,cx;clear hour/min
         mov si,obstacle_position_index
 .if obstacle_number != 0
         mov bx,obstacle_init
@@ -443,8 +442,8 @@ RANDOM_OBSTACLE_GENERATE proc
         mov cx,dx
         xor ch,ch
 .endif
-
-.if dx > 150 && (bx > 95 || cx != 0d ) 
+;&& bx < 300d
+.if dx > 160 && (bx > 250d) || (bx < 60d && bx > 30d) || cx==0
         mov bx,obstacle_init
         mov obstacle_position[si],bx
         inc word ptr [obstacle_number]
@@ -474,7 +473,7 @@ SHIFT_OBSTACLE endp
 OBSTACLE_BOUNDARY proc
         push ax
         mov ax,obstacle_position[0]
-.if ax < 41604d
+.if ax < 41602d
         call CLAER_OBSTACLE
 .endif
         pop ax
