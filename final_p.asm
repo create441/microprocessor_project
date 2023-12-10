@@ -10,13 +10,11 @@ ENDM
 .model small
 
 .data
-  screen_hight            dw 200
-  screen_width            dw 320
+;screen_hight 200 screen_width 320
   color                   db 0fh ;white
-  ground_color            db 06h ;brown
-  charactor_init          dw 38440d  ;320*120+40,charactor(40*20)
+  ground_color            db 06h ;brown 
   charactor_color         db 04h
-  charactor_position      dw 38440d
+  charactor_position      dw 38440d  ;320*120+40,charactor(40*20)
   charactor_last_position dw 50940d
   exit_                   db 0h
   score                   dw 0h
