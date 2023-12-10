@@ -1,2 +1,3 @@
 # microprocessor_project
-this is a little program for microprocessor class
+This is a little program for microprocessor class.<br>
+The result file is in ASM directory.
